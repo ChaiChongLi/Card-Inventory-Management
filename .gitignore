@@ -1,0 +1,39 @@
+# ── Dependencies ──────────────────────────────────────────────────────────────
+node_modules/
+
+# ── Build output ──────────────────────────────────────────────────────────────
+dist/
+build/
+
+# ── Environment / secrets ─────────────────────────────────────────────────────
+.env
+.env.prod
+.env.local
+.env.*.local
+
+# ── Prisma generated client ───────────────────────────────────────────────────
+tcg-calculator-api/node_modules/
+tcg-calculator-api/dist/
+
+# ── Angular ───────────────────────────────────────────────────────────────────
+tcg-calculator/node_modules/
+tcg-calculator/dist/
+.angular/
+
+# ── Logs ──────────────────────────────────────────────────────────────────────
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ── OS ────────────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+
+# ── IDE ───────────────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln

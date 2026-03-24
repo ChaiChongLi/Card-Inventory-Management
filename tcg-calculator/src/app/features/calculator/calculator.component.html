@@ -1,0 +1,317 @@
+<div class="app-wrapper">
+
+  <!-- ── Header ──────────────────────────────────────────────────────────── -->
+  <header class="header">
+    <div class="header-inner">
+      <div class="header-brand">
+        <div class="brand-icon">🃏</div>
+        <div>
+          <h1 class="brand-title">TCG Pricing Calculator</h1>
+          <p class="brand-sub">Margin &amp; Profit Analyzer · Bursa-Ready</p>
+        </div>
+      </div>
+
+      <!-- Navigation toolbar -->
+      <div class="session-toolbar">
+        @if (fromBatchId()) {
+          <button class="btn btn-ghost btn-sm" (click)="goBackToBatch()">← {{ fromBatchName() }}</button>
+        }
+        <a class="btn btn-ghost btn-sm" routerLink="/dashboard">Dashboard</a>
+      </div>
+
+      <div class="header-actions">
+        <button class="btn btn-ghost btn-sm" (click)="showFormula.set(!showFormula())">
+          {{ showFormula() ? '▲' : '▼' }} Formula
+        </button>
+        <button class="btn btn-secondary" (click)="exportCsv()" [disabled]="skus().length === 0">
+          ⬇ Export CSV
+        </button>
+        <button class="btn btn-primary" (click)="addSku()">
+          + Add SKU
+        </button>
+        @if (authService.currentUser()) {
+          <div class="user-chip">
+            <span class="user-name">{{ authService.currentUser()!.username }}</span>
+            @if (authService.isAdmin()) {
+              <span class="user-badge">Admin</span>
+              <a class="btn btn-ghost btn-sm" routerLink="/admin">Admin</a>
+            }
+            <button class="btn btn-ghost btn-sm" (click)="logout()">Logout</button>
+          </div>
+        }
+      </div>
+    </div>
+
+    <!-- Formula reference -->
+    @if (showFormula()) {
+      <div class="formula-box">
+        <div class="formula-title">📐 Pricing Formula</div>
+        <div class="formula-grid">
+          <div class="formula-item">
+            <span class="formula-label">Sell Price</span>
+            <span class="formula-expr">= (Product Cost + Shipping) ÷ (1 − Platform Fee% − Desired Margin%)</span>
+          </div>
+          <div class="formula-item">
+            <span class="formula-label">Profit / Unit</span>
+            <span class="formula-expr">= Sell Price − Platform Fee Amount − Total Cost</span>
+          </div>
+          <div class="formula-item">
+            <span class="formula-label">Break-even</span>
+            <span class="formula-expr">= Total Cost ÷ (1 − Platform Fee%)</span>
+          </div>
+          <div class="formula-item">
+            <span class="formula-label">Actual Margin</span>
+            <span class="formula-expr">= Profit ÷ Sell Price × 100</span>
+          </div>
+        </div>
+      </div>
+    }
+  </header>
+
+  <!-- ── Summary Bar ──────────────────────────────────────────────────────── -->
+  <section class="summary-bar">
+    <div class="summary-card">
+      <span class="summary-label">SKUs</span>
+      <span class="summary-value">{{ summary().skuCount }}</span>
+    </div>
+    <div class="summary-card">
+      <span class="summary-label">Total Revenue</span>
+      <span class="summary-value">RM {{ summary().totalRevenue | number:'1.2-2' }}</span>
+    </div>
+    <div class="summary-card">
+      <span class="summary-label">Total Cost</span>
+      <span class="summary-value text-muted">RM {{ summary().totalCost | number:'1.2-2' }}</span>
+    </div>
+    <div class="summary-card">
+      <span class="summary-label">Total Profit</span>
+      <span class="summary-value" [class.text-profit]="summary().totalProfit >= 0" [class.text-danger]="summary().totalProfit < 0">
+        RM {{ summary().totalProfit | number:'1.2-2' }}
+      </span>
+    </div>
+    <div class="summary-card">
+      <span class="summary-label">Avg Margin</span>
+      <span class="summary-value" [class.text-profit]="summary().avgMargin >= 15" [class.text-warning]="summary().avgMargin > 0 && summary().avgMargin < 15" [class.text-danger]="summary().avgMargin < 0">
+        {{ summary().avgMargin | number:'1.1-1' }}%
+      </span>
+    </div>
+  </section>
+
+  <!-- ── SKU Table ──────────────────────────────────────────────────────── -->
+  <main class="main-content">
+    @if (skus().length === 0) {
+      <div class="empty-state">
+        <div class="empty-icon">🃏</div>
+        <h3>No SKUs yet</h3>
+        <p>Add your first product to start calculating margins</p>
+        <button class="btn btn-primary" (click)="addSku()">+ Add SKU</button>
+      </div>
+    } @else {
+      <div class="table-scroll">
+        <table class="sku-table">
+          <thead>
+            <tr>
+              <th class="col-name">Product / SKU</th>
+              <th class="col-num">Cost (RM)</th>
+              <th class="col-num">Shipping (RM)</th>
+              <th class="col-platform">Platform</th>
+              <th class="col-num">Fee %</th>
+              <th class="col-num">Margin %</th>
+              <th class="col-num">Qty</th>
+              <th class="col-result th-accent">Sell Price</th>
+              <th class="col-result th-accent">Profit/Unit</th>
+              <th class="col-result th-accent">Margin</th>
+              <th class="col-result th-muted">Break-even</th>
+              <th class="col-result th-accent">Total Profit</th>
+              <th class="col-actions"></th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (sku of skus(); track sku.id) {
+              @let result = calculate(sku);
+              <tr class="sku-row" [class.row-active]="activeRow() === sku.id" (click)="activeRow.set(sku.id)">
+
+                <!-- Name -->
+                <td class="col-name">
+                  <div class="name-cell">
+                    <input
+                      class="form-control name-input"
+                      type="text"
+                      [(ngModel)]="sku.name"
+                      placeholder="Product name"
+                    />
+                    <div class="preset-dropdown">
+                      <select class="form-control preset-select" (change)="setPreset(sku, $any($event.target).value)" [value]="''">
+                        <option value="" disabled>Quick fill ▾</option>
+                        @for (preset of productTypePresets; track preset) {
+                          <option [value]="preset">{{ preset }}</option>
+                        }
+                      </select>
+                    </div>
+                  </div>
+                </td>
+
+                <!-- Cost -->
+                <td class="col-num">
+                  <div class="input-prefix">
+                    <span class="prefix-label">RM</span>
+                    <input class="form-control prefix-input" type="number" min="0" step="0.50"
+                      [(ngModel)]="sku.productCost" placeholder="0.00" />
+                  </div>
+                </td>
+
+                <!-- Shipping -->
+                <td class="col-num">
+                  <div class="input-prefix">
+                    <span class="prefix-label">RM</span>
+                    <input class="form-control prefix-input" type="number" min="0" step="0.50"
+                      [(ngModel)]="sku.shippingCost" placeholder="0.00" />
+                  </div>
+                </td>
+
+                <!-- Platform -->
+                <td class="col-platform">
+                  <select class="form-control"
+                    [(ngModel)]="sku.platformId"
+                    (ngModelChange)="onPlatformChange(sku)">
+                    @for (p of platforms; track p.id) {
+                      <option [value]="p.id">{{ p.name }}</option>
+                    }
+                  </select>
+                </td>
+
+                <!-- Platform Fee % -->
+                <td class="col-num">
+                  <input class="form-control"
+                    type="number" min="0" max="50" step="0.5"
+                    [(ngModel)]="sku.platformFee"
+                    [readonly]="!isCustomPlatform(sku.platformId)"
+                    [class.readonly-field]="!isCustomPlatform(sku.platformId)"
+                    placeholder="0" />
+                </td>
+
+                <!-- Desired Margin % -->
+                <td class="col-num">
+                  <input class="form-control" type="number" min="0" max="90" step="1"
+                    [(ngModel)]="sku.desiredMargin" placeholder="20" />
+                </td>
+
+                <!-- Quantity -->
+                <td class="col-num">
+                  <input class="form-control" type="number" min="1" step="1"
+                    [(ngModel)]="sku.quantity" placeholder="1" />
+                </td>
+
+                <!-- ── Calculated Results ── -->
+                @if (result.valid) {
+                  <td class="col-result result-price">
+                    <span class="result-value">RM {{ result.sellingPrice | number:'1.2-2' }}</span>
+                  </td>
+                  <td class="col-result" [class.result-profit]="result.profitPerUnit >= 0" [class.result-loss]="result.profitPerUnit < 0">
+                    <span class="result-value">RM {{ result.profitPerUnit | number:'1.2-2' }}</span>
+                  </td>
+                  <td class="col-result" [class.result-profit]="result.actualMargin >= 15" [class.result-warning]="result.actualMargin > 0 && result.actualMargin < 15" [class.result-loss]="result.actualMargin < 0">
+                    <span class="result-value">{{ result.actualMargin | number:'1.1-1' }}%</span>
+                    @if (result.warning) {
+                      <span class="warn-dot" title="{{ result.warning }}">⚠</span>
+                    }
+                  </td>
+                  <td class="col-result result-breakeven">
+                    <span class="result-value muted">RM {{ result.breakEven | number:'1.2-2' }}</span>
+                  </td>
+                  <td class="col-result" [class.result-profit]="result.totalProfit >= 0" [class.result-loss]="result.totalProfit < 0">
+                    <span class="result-value strong">RM {{ result.totalProfit | number:'1.2-2' }}</span>
+                  </td>
+                } @else {
+                  <td class="col-result" colspan="5">
+                    <span class="result-error">{{ result.warning || 'Enter costs to calculate' }}</span>
+                  </td>
+                }
+
+                <!-- Actions -->
+                <td class="col-actions">
+                  <div class="action-group">
+                    <button class="btn btn-ghost btn-sm icon-btn" title="Duplicate" (click)="duplicateSku(sku); $event.stopPropagation()">⧉</button>
+                    <button class="btn btn-danger btn-sm icon-btn" title="Remove" (click)="removeSku(sku.id); $event.stopPropagation()">✕</button>
+                  </div>
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+
+      <!-- ── Per-SKU Detail Cards (mobile) ── -->
+      <div class="card-list">
+        @for (sku of skus(); track sku.id) {
+          @let result = calculate(sku);
+          <div class="sku-card">
+            <div class="sku-card-header">
+              <input class="form-control name-input" type="text" [(ngModel)]="sku.name" placeholder="Product name" />
+              <button class="btn btn-danger btn-sm icon-btn" (click)="removeSku(sku.id)">✕</button>
+            </div>
+            <div class="sku-card-body">
+              <div class="card-field">
+                <label>Platform</label>
+                <select class="form-control" [(ngModel)]="sku.platformId" (ngModelChange)="onPlatformChange(sku)">
+                  @for (p of platforms; track p.id) {
+                    <option [value]="p.id">{{ p.name }}</option>
+                  }
+                </select>
+              </div>
+              <div class="card-row">
+                <div class="card-field">
+                  <label>Cost (RM)</label>
+                  <input class="form-control" type="number" min="0" step="0.5" [(ngModel)]="sku.productCost" />
+                </div>
+                <div class="card-field">
+                  <label>Shipping (RM)</label>
+                  <input class="form-control" type="number" min="0" step="0.5" [(ngModel)]="sku.shippingCost" />
+                </div>
+              </div>
+              <div class="card-row">
+                <div class="card-field">
+                  <label>Platform Fee %</label>
+                  <input class="form-control" type="number" [(ngModel)]="sku.platformFee" [readonly]="!isCustomPlatform(sku.platformId)" />
+                </div>
+                <div class="card-field">
+                  <label>Target Margin %</label>
+                  <input class="form-control" type="number" [(ngModel)]="sku.desiredMargin" />
+                </div>
+              </div>
+            </div>
+            @if (result.valid) {
+              <div class="sku-card-result">
+                <div class="card-result-item accent">
+                  <span>Sell Price</span>
+                  <strong>RM {{ result.sellingPrice | number:'1.2-2' }}</strong>
+                </div>
+                <div class="card-result-item" [class.profit]="result.profitPerUnit >= 0" [class.loss]="result.profitPerUnit < 0">
+                  <span>Profit/Unit</span>
+                  <strong>RM {{ result.profitPerUnit | number:'1.2-2' }}</strong>
+                </div>
+                <div class="card-result-item" [class.profit]="result.actualMargin >= 15" [class.loss]="result.actualMargin < 0">
+                  <span>Margin</span>
+                  <strong>{{ result.actualMargin | number:'1.1-1' }}%</strong>
+                </div>
+                <div class="card-result-item muted">
+                  <span>Break-even</span>
+                  <strong>RM {{ result.breakEven | number:'1.2-2' }}</strong>
+                </div>
+              </div>
+            } @else {
+              <div class="sku-card-error">{{ result.warning }}</div>
+            }
+          </div>
+        }
+      </div>
+    }
+  </main>
+
+  <!-- ── Footer ──────────────────────────────────────────────────────────── -->
+  <footer class="app-footer">
+    <span>TCG Pricing Calculator · Built with Angular 21</span>
+    <span class="footer-hint">Tip: Shopee charges 3% · TikTok Shop 5% · Commission is deducted from selling price</span>
+  </footer>
+
+</div>
+

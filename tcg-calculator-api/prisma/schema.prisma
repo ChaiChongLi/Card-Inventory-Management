@@ -1,0 +1,255 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  WORKER
+}
+
+enum BatchStatus {
+  OPEN
+  CLOSED
+}
+
+enum RetainedMode {
+  FIXED_AMOUNT
+  PERCENTAGE
+}
+
+model User {
+  id           Int      @id @default(autoincrement())
+  username     String   @unique @db.VarChar(100)
+  passwordHash String   @db.VarChar(255)
+  role         Role     @default(WORKER)
+  isActive     Boolean  @default(true)
+  isDeleted    Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  sessions      Session[]
+  refreshTokens RefreshToken[]
+  partner       Partner?
+
+  @@index([isDeleted])
+  @@index([role])
+}
+
+model RefreshToken {
+  id        Int      @id @default(autoincrement())
+  token     String   @unique @db.VarChar(512)
+  userId    Int
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  isRevoked Boolean  @default(false)
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([token])
+}
+
+model Platform {
+  id             Int      @id @default(autoincrement())
+  slug           String   @unique @db.VarChar(50)
+  name           String   @db.VarChar(100)
+  feePercent     Decimal  @db.Decimal(5, 2)
+  isCustomizable Boolean  @default(false)
+  isActive       Boolean  @default(true)
+  isDeleted      Boolean  @default(false)
+  sortOrder      Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  skuItems    SkuItem[]
+  saleRecords SaleRecord[]
+
+  @@index([isDeleted])
+  @@index([isActive])
+}
+
+model Session {
+  id          Int      @id @default(autoincrement())
+  name        String   @db.VarChar(200)
+  description String?  @db.Text
+  userId      Int
+  isDeleted   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user     User      @relation(fields: [userId], references: [id])
+  skuItems SkuItem[]
+
+  @@index([userId])
+  @@index([isDeleted])
+}
+
+model SkuItem {
+  id               Int      @id @default(autoincrement())
+  sessionId        Int
+  platformId       Int
+  name             String   @db.VarChar(200)
+  productCost      Decimal  @db.Decimal(10, 2)
+  shippingCost     Decimal  @db.Decimal(10, 2)
+  customFeePercent Decimal? @db.Decimal(5, 2)
+  desiredMargin    Decimal  @db.Decimal(5, 2)
+  quantity         Int      @default(1)
+  sortOrder        Int      @default(0)
+  isDeleted        Boolean  @default(false)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  session  Session  @relation(fields: [sessionId], references: [id])
+  platform Platform @relation(fields: [platformId], references: [id])
+
+  @@index([sessionId])
+  @@index([sessionId, isDeleted])
+  @@index([isDeleted])
+}
+
+model ProductPreset {
+  id        Int      @id @default(autoincrement())
+  name      String   @db.VarChar(200)
+  sortOrder Int      @default(0)
+  isDeleted Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([isDeleted])
+}
+
+// ── Investment & Profit Sharing ──────────────────────────────────────────────
+
+model Partner {
+  id          Int      @id @default(autoincrement())
+  userId      Int      @unique
+  displayName String   @db.VarChar(100)
+  isActive    Boolean  @default(true)
+  isDeleted   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user               User                @relation(fields: [userId], references: [id])
+  distributionShares DistributionShare[]
+
+  @@index([isDeleted])
+}
+
+model Batch {
+  id          Int         @id @default(autoincrement())
+  name        String      @db.VarChar(200)
+  description String?     @db.Text
+  status      BatchStatus @default(OPEN)
+  deliveryFee Decimal     @default(0) @db.Decimal(10, 2)
+  otherFees   Decimal     @default(0) @db.Decimal(10, 2)
+  isDeleted   Boolean     @default(false)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  batchItems   BatchItem[]
+  distribution Distribution?
+
+  @@index([isDeleted])
+  @@index([status])
+}
+
+model BatchItem {
+  id        Int      @id @default(autoincrement())
+  batchId   Int
+  itemName  String   @db.VarChar(200)
+  quantity  Int      @default(1)
+  unitCost  Decimal  @db.Decimal(10, 2)
+  notes     String?  @db.VarChar(500)
+  isDeleted Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  batch       Batch        @relation(fields: [batchId], references: [id])
+  saleRecords SaleRecord[]
+
+  @@index([batchId])
+  @@index([batchId, isDeleted])
+  @@index([isDeleted])
+}
+
+// Individual sale transaction for a batch item (supports partial sales at different prices)
+model SaleRecord {
+  id            Int      @id @default(autoincrement())
+  batchItemId   Int
+  quantity      Int      @default(1)
+  unitSalePrice Decimal  @db.Decimal(10, 2)
+  platformId    Int?
+  notes         String?  @db.VarChar(500)
+  isDeleted     Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  batchItem BatchItem @relation(fields: [batchItemId], references: [id])
+  platform  Platform? @relation(fields: [platformId], references: [id])
+
+  @@index([batchItemId])
+  @@index([batchItemId, isDeleted])
+  @@index([isDeleted])
+}
+
+model Distribution {
+  id                Int          @id @default(autoincrement())
+  batchId           Int          @unique
+  totalRevenue      Decimal      @db.Decimal(12, 2)
+  totalCost         Decimal      @db.Decimal(12, 2)
+  grossProfit       Decimal      @db.Decimal(12, 2)
+  retainedMode      RetainedMode @default(FIXED_AMOUNT)
+  retainedValue     Decimal      @db.Decimal(12, 2) @default(0)
+  retainedAmount    Decimal      @db.Decimal(12, 2)
+  distributedAmount Decimal      @db.Decimal(12, 2)
+  notes             String?      @db.Text
+  isDeleted         Boolean      @default(false)
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+
+  batch  Batch               @relation(fields: [batchId], references: [id])
+  shares DistributionShare[]
+
+  @@index([isDeleted])
+}
+
+model ShopPurchase {
+  id           Int      @id @default(autoincrement())
+  buyerName    String   @db.VarChar(200)
+  itemName     String   @db.VarChar(200)
+  quantity     Int
+  unitCost     Decimal  @db.Decimal(10, 2)
+  purchaseDate DateTime @db.Date
+  category     String?  @db.VarChar(100)
+  notes        String?  @db.Text
+  isDeleted    Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([isDeleted])
+  @@index([purchaseDate])
+}
+
+model DistributionShare {
+  id             Int     @id @default(autoincrement())
+  distributionId Int
+  partnerId      Int
+  percentage     Decimal @db.Decimal(5, 2)
+  amount         Decimal @db.Decimal(12, 2)
+  isDeleted      Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  distribution Distribution @relation(fields: [distributionId], references: [id])
+  partner      Partner      @relation(fields: [partnerId], references: [id])
+
+  @@unique([distributionId, partnerId])
+  @@index([distributionId])
+  @@index([isDeleted])
+}
